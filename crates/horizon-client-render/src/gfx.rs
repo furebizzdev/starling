@@ -5554,6 +5554,19 @@ impl Renderer {
     /// `upscale`: output pixels per rendered pixel, for TAA to rebuild (1: native).
     pub fn set_world_post(&mut self, scale: f32, antialias: bool, taa: bool, upscale: f32) {
         let taa = taa && self.world_post.supports_taa();
+        // Mali-G52 devices are especially sensitive to full-resolution world passes. The
+        // Starling RMX3941 report was GPU-bound (about 22 ms at 2400x1080) and also showed
+        // repeated Mali shader-compiler crashes. Keep the HUD at native resolution, but cap the
+        // expensive world target on this driver family. The user can still choose a lower value;
+        // non-Mali adapters and desktop builds keep the requested setting unchanged.
+        let mali_g52 = cfg!(target_os = "android")
+            && self
+                .adapter
+                .get_info()
+                .name
+                .to_ascii_lowercase()
+                .contains("mali-g52");
+        let scale = if mali_g52 { scale.min(0.70) } else { scale };
         self.world_post.scale = scale.clamp(0.25, 2.0);
         self.world_post.antialias = antialias && !taa;
         self.world_post.taa = taa;
