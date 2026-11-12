@@ -992,9 +992,10 @@ impl Graphics {
         // and render threads are raised above four cores, where vanilla
         // raises its server thread). Leaving two idled a core of a 4-thread
         // laptop while a world loaded: a teleport there took ~15% longer.
-        // A phone leaves two, as Starling was measured with: half its cores are small ones, and
-        // a hot phone slows every core down.
-        let spare = if cfg!(target_os = "android") { 2 } else { 1 };
+        // Android's scheduler already accounts for heterogeneous cores and thermal pressure.
+        // Leaving two logical CPUs unused under-utilized 8-CPU phones. Let the OS schedule all
+        // CPUs available to this process; battery mode still halves workers explicitly.
+        let spare = if cfg!(target_os = "android") { 0 } else { 1 };
         let auto = horizon_threads::worker_count().saturating_sub(spare).max(1);
         if self.battery { auto.div_ceil(2) } else { auto }
     }
@@ -1430,7 +1431,12 @@ mod tests {
         let g = Graphics::default();
         assert_eq!(g.workers, 0);
         let cores = horizon_threads::worker_count();
-        assert_eq!(g.worker_threads(), cores.saturating_sub(1).max(1));
+        let expected = if cfg!(target_os = "android") {
+            cores.max(1)
+        } else {
+            cores.saturating_sub(1).max(1)
+        };
+        assert_eq!(g.worker_threads(), expected);
         // A manual count is the player's own choice, kept as asked.
         let manual = Graphics { workers: 3, ..g };
         assert_eq!(manual.worker_threads(), 3);
